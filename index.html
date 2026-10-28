@@ -264,7 +264,7 @@
       box-shadow: 0 5px 16px rgb(101 88 232 / 10%);
     }
 
-    .answer:focus-visible, .next-button:focus-visible, .restart-button:focus-visible {
+    .answer:focus-visible, .next-button:focus-visible, .review-button:focus-visible, .restart-button:focus-visible {
       outline: 3px solid color-mix(in srgb, var(--accent) 45%, transparent);
       outline-offset: 3px;
     }
@@ -329,7 +329,7 @@
       margin-top: 18px;
     }
 
-    .next-button, .restart-button {
+    .next-button, .review-button, .restart-button {
       min-height: 46px;
       padding: 0 18px;
       border: 0;
@@ -344,7 +344,7 @@
       transition: transform 160ms ease, box-shadow 160ms ease;
     }
 
-    .next-button:hover, .restart-button:hover {
+    .next-button:hover, .review-button:hover, .restart-button:hover {
       transform: translateY(-1px);
       box-shadow: 0 10px 22px rgb(101 88 232 / 30%);
     }
@@ -381,7 +381,8 @@
       font-weight: 800;
     }
 
-    .result .restart-button { display: block; margin: 0 auto; }
+    .result .review-button, .result .restart-button { display: block; margin: 0 auto; }
+    .result .review-button { margin-bottom: 12px; }
 
     .hidden { display: none !important; }
 
@@ -532,10 +533,14 @@
     let questionIndex = 0;
     let score = 0;
     let answered = false;
+    let activeQuestions = questions;
+    let missedQuestions = [];
+    let isReviewing = false;
 
     function renderQuestion() {
-      const current = questions[questionIndex];
-      questionCount.textContent = `Question ${questionIndex + 1} of ${questions.length}`;
+      const current = activeQuestions[questionIndex];
+      questionCount.textContent = `Question ${questionIndex + 1} of ${activeQuestions.length}`;
+      progressTrack.setAttribute("aria-valuemax", activeQuestions.length);
       scoreDisplay.textContent = score;
       categoryDisplay.textContent = current.category;
       questionDisplay.textContent = current.question;
@@ -558,7 +563,7 @@
     function selectAnswer(selectedIndex) {
       if (answered) return;
       answered = true;
-      const current = questions[questionIndex];
+      const current = activeQuestions[questionIndex];
       const buttons = [...answersDisplay.querySelectorAll(".answer")];
       const isCorrect = selectedIndex === current.answer;
 
@@ -569,20 +574,21 @@
       });
 
       if (isCorrect) {
-        score += 1;
+        if (!isReviewing) score += 1;
         scoreDisplay.textContent = score;
         feedbackDisplay.textContent = `Correct! ${current.fact}`;
         feedbackDisplay.classList.add("is-correct");
       } else {
+        if (!isReviewing) missedQuestions.push(current);
         feedbackDisplay.textContent = `Not quite! ${current.fact}`;
         feedbackDisplay.classList.add("is-wrong");
       }
 
       const completed = questionIndex + 1;
-      progressFill.style.width = `${(completed / questions.length) * 100}%`;
+      progressFill.style.width = `${(completed / activeQuestions.length) * 100}%`;
       progressTrack.setAttribute("aria-valuenow", completed);
-      nextButton.innerHTML = completed === questions.length
-        ? "See your results <span aria-hidden=\"true\">→</span>"
+      nextButton.innerHTML = completed === activeQuestions.length
+        ? isReviewing ? "Return to results <span aria-hidden=\"true\">→</span>" : "See your results <span aria-hidden=\"true\">→</span>"
         : "Next question <span aria-hidden=\"true\">→</span>";
       nextButton.classList.remove("hidden");
       nextButton.focus();
@@ -605,14 +611,36 @@
         <h1>${result.title}</h1>
         <p class="result-copy">${result.copy}</p>
         <div class="result-score">${score} out of ${questions.length} correct</div>
+        ${missedQuestions.length > 0 ? '<button class="review-button" type="button">Review missed questions <span aria-hidden="true">↻</span></button>' : ""}
         <button class="restart-button" type="button">Play again <span aria-hidden="true">↻</span></button>
       `;
       resultDisplay.classList.remove("hidden");
       resultDisplay.querySelector(".restart-button").addEventListener("click", restartQuiz);
-      resultDisplay.querySelector(".restart-button").focus();
+      const reviewButton = resultDisplay.querySelector(".review-button");
+      if (reviewButton) {
+        reviewButton.addEventListener("click", startReview);
+        reviewButton.focus();
+      } else {
+        resultDisplay.querySelector(".restart-button").focus();
+      }
+    }
+
+    function startReview() {
+      isReviewing = true;
+      activeQuestions = missedQuestions;
+      questionIndex = 0;
+      resultDisplay.classList.add("hidden");
+      quizContent.classList.remove("hidden");
+      progressFill.style.width = "0%";
+      progressTrack.setAttribute("aria-valuenow", "0");
+      renderQuestion();
+      questionDisplay.focus();
     }
 
     function restartQuiz() {
+      activeQuestions = questions;
+      missedQuestions = [];
+      isReviewing = false;
       questionIndex = 0;
       score = 0;
       resultDisplay.classList.add("hidden");
@@ -624,7 +652,9 @@
     }
 
     nextButton.addEventListener("click", () => {
-      if (questionIndex === questions.length - 1) {
+      if (questionIndex === activeQuestions.length - 1) {
+        isReviewing = false;
+        activeQuestions = questions;
         showResults();
         return;
       }
